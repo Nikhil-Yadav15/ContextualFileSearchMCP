@@ -37,6 +37,7 @@ git clone https://github.com/Nikhil-Yadav15/ContextualFileSearchMCP.git
 ### 2. Add Dependencies Using uv
 
 ```bash
+uv init
 uv add sentence-transformers PyPDF2 python-docx openpyxl mcp[cli]
 ```
 
