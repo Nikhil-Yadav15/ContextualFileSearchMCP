@@ -27,25 +27,34 @@ This Python-based tool helps you find the most relevant files on your computer u
 ---
 
 ## ▶️ Getting Started
+  ### 📋 Prerequisites
+  * ### Claude Desktop
 
-### 1. Clone the Repo
+* ## Option 1: Run Locally
 
-```bash
-git clone https://github.com/Nikhil-Yadav15/ContextualFileSearchMCP.git
-```
-
-### 2. Add Dependencies Using uv
-
-```bash
-uv init
-uv add sentence-transformers PyPDF2 python-docx openpyxl mcp[cli]
-```
-
-### 3. Run the MCP Tool
-
-```bash
-uv run mcp install SearchFileByContent.py
-```
+  ### 1. Clone the Repo
+  
+  ```bash
+  git clone https://github.com/Nikhil-Yadav15/ContextualFileSearchMCP.git
+  ```
+  
+  ### 2. Add Dependencies Using uv
+  
+  ```bash
+  uv init
+  uv add sentence-transformers PyPDF2 python-docx openpyxl mcp[cli]
+  ```
+  
+  ### 3. Run the MCP Tool
+  
+  ```bash
+  uv run mcp install SearchFileByContent.py
+  ```
+* ## Option 2: Using Docker 🐳
+    ```bash
+  docker pull tensorforge/contexualfilefindermcp
+  docker run -it tensorforge/contexualfilefindermcp
+  ```
 
 ---
 
