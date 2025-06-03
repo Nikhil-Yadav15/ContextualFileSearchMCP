@@ -8,19 +8,19 @@ import PyPDF2
 from docx import Document
 import openpyxl
 from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
-class IntelligentFileSearcher:
+class FileSearcherByContent:
     def __init__(self):
-        self.file_cache = {}
-        self.max_file_size = 100 * 1024 * 1024
-        self.max_preview_chars = 500
+        self.max_fsize = 100 * 1024 * 1024
+        self.max_prev = 500
         try:
             self.semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
         except:
             self.semantic_model = None
     
-    def extract_text_from_file(self, file_path: str, max_chars: int = 2000) -> str:
+    def extracttext_fromfile(self, file_path: str, max_chars: int = 2000) -> str:
         """Extract text from various file types"""
         plaintext_extensions = [
             '.txt', '.md', '.py', '.js', '.html', '.css', '.json', '.xml',
@@ -30,19 +30,19 @@ class IntelligentFileSearcher:
         try:
             file_ext = os.path.splitext(file_path)[1].lower()
             if file_ext == '.pdf':
-                return self._extract_pdf_text(file_path, max_chars)
+                return self.extract_pdf(file_path, max_chars)
             elif file_ext in ['.docx', '.doc']:
-                return self._extract_docx_text(file_path, max_chars)
+                return self.extract_docx(file_path, max_chars)
             elif file_ext in ['.xlsx', '.xls']:
-                return self._extract_excel_text(file_path, max_chars)
+                return self.extract_excel(file_path, max_chars)
             elif file_ext in plaintext_extensions:
-                return self._extract_plain_text(file_path, max_chars)
+                return self.extract_plain(file_path, max_chars)
             else:
                 return ""
         except Exception as e:
             return ""
     
-    def _extract_pdf_text(self, file_path: str, max_chars: int) -> str:
+    def extract_pdf(self, file_path: str, max_chars: int) -> str:
         """Extract text from PDF files"""
         try:
             with open(file_path, 'rb') as file:
@@ -56,7 +56,7 @@ class IntelligentFileSearcher:
         except:
             return ""
     
-    def _extract_docx_text(self, file_path: str, max_chars: int) -> str:
+    def extract_docx(self, file_path: str, max_chars: int) -> str:
         """Extract text from Word documents"""
         try:
             doc = Document(file_path)
@@ -69,7 +69,7 @@ class IntelligentFileSearcher:
         except:
             return ""
     
-    def _extract_excel_text(self, file_path: str, max_chars: int) -> str:
+    def extract_excel(self, file_path: str, max_chars: int) -> str:
         """Extract text from Excel files"""
         try:
             workbook = openpyxl.load_workbook(file_path, read_only=True)
@@ -85,7 +85,7 @@ class IntelligentFileSearcher:
         except:
             return ""
     
-    def _extract_plain_text(self, file_path: str, max_chars: int) -> str:
+    def extract_plain(self, file_path: str, max_chars: int) -> str:
         """Extract text from plain text files"""
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
@@ -97,21 +97,19 @@ class IntelligentFileSearcher:
             except:
                 return ""
     
-    def extract_keywords(self, content_hint: str) -> list[str]:
+    def make_keywords(self, content_hint: str) -> list[str]:
         """Extract meaningful keywords from content hint"""
-        # Remove common stop words and extract meaningful terms
-        stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'about'}
+        stopper = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'about'}
         words = re.findall(r'\b\w+\b', content_hint.lower())
-        keywords = [word for word in words if len(word) > 2 and word not in stop_words]
+        keywords = [word for word in words if len(word) > 2 and word not in stopper]
         return keywords
     
     def calculate_keyword_score(self, keywords: list[str], text: str) -> float:
         """Calculate keyword matching score"""
         if not keywords or not text:
             return 0.0
-        
-        lower = text.lower()
-        matches = sum(1 for keyword in keywords if keyword in lower)
+        text__ = text.lower()
+        matches = sum(1 for keyword in keywords if keyword in text__)
         return matches / len(keywords)
     
     def calculate_semantic_score(self, content_hint: str, text: str) -> float:
@@ -120,12 +118,9 @@ class IntelligentFileSearcher:
             return 0.0
         
         try:
-            # Encode both texts
             hint_embedding = self.semantic_model.encode([content_hint])
-            text_embedding = self.semantic_model.encode([text[:1000]])  # Limit text length
-            
-            # Calculate cosine similarity
-            from sklearn.metrics.pairwise import cosine_similarity
+            text_embedding = self.semantic_model.encode([text[:1000]])
+  
             similarity = cosine_similarity(hint_embedding, text_embedding)[0][0]
             return float(similarity)
         except Exception:
@@ -133,84 +128,69 @@ class IntelligentFileSearcher:
     
     def calculate_relevance_score(self, content_hint: str, extracted_text: str, filename: str) -> float:
         """Calculate overall relevance score"""
-        keywords = self.extract_keywords(content_hint)
+        keywords = self.make_keywords(content_hint)
         
-        # Keyword matching (80% weight if no semantic model, 35% if available)
         keyword_score = self.calculate_keyword_score(keywords, extracted_text)
-        
-        # Filename relevance (15% weight)
+
         filename_score = self.calculate_keyword_score(keywords, filename)
-        
         if self.semantic_model:
-            # Semantic similarity (50% weight)
             semantic_score = self.calculate_semantic_score(content_hint, extracted_text)
             return (keyword_score * 0.35) + (semantic_score * 0.5) + (filename_score * 0.15)
         else:
-            # Fallback to keyword-only scoring
             return (keyword_score * 0.8) + (filename_score * 0.2)
     
-    def get_file_candidates(self, drive: str, extension: str) -> list[str]:
+    def eligible_files(self, drive: str, extension: str) -> list[str]:
         """Get list of candidate files efficiently"""
-        candidates = []
+        eligible = []
         drive_path = f"{drive}:" if len(drive) == 1 else drive
         
         def scan_directory(directory: str, depth: int = 0):
             """Recursively scan directory with depth limit"""
-            if depth > 6:  # Limit recursion depth
+            if depth > 6:
                 return
-            
             try:
                 with os.scandir(directory) as entries:
                     for entry in entries:
                         if entry.is_file():
                             if entry.name.lower().endswith(f".{extension.lower()}"):
-                                if entry.stat().st_size < self.max_file_size:
-                                    candidates.append(entry.path)
+                                if entry.stat().st_size < self.max_fsize:
+                                    eligible.append(entry.path)
                         elif entry.is_dir() and not entry.name.startswith('.'):
                             scan_directory(entry.path, depth + 1)
             except (PermissionError, OSError):
-                pass  # Skip inaccessible directories
-        
-        # Start scanning
+                pass 
+
         if os.path.exists(drive_path):
             scan_directory(drive_path)
         
-        return candidates
+        return eligible
     
     async def search_files(self, drive: str, extension: str, content_hint: str, max_results: int = 10):
         """Main search function"""
-        
-        # Get candidate files
-        candidates = self.get_file_candidates(drive, extension)
-        if not candidates:
+        eligible = self.eligible_files(drive, extension)
+        if not eligible:
             return []
         
         results = []
         processed_count = 0
         error_count = 0
-        
-        # Use ThreadPoolExecutor for parallel processing
         with ThreadPoolExecutor(max_workers=4) as executor:
-            # Process files in batches
             batch_size = 20
-            total_batches = (len(candidates) + batch_size - 1) // batch_size
-            
-            for batch_num, i in enumerate(range(0, len(candidates), batch_size), 1):
-                batch = candidates[i:i + batch_size]
-                # Submit batch for processing
+    
+            for num, i in enumerate(range(0, len(eligible), batch_size), 1):
+                batch = eligible[i:i + batch_size]
                 futures = []
                 for file_path in batch:
                     future = executor.submit(self._process_single_file, file_path, content_hint)
                     futures.append((future, file_path))
-                
-                # Collect results from this batch
+    
                 batch_results = 0
                 for future, file_path in futures:
                     try:
-                        result = future.result(timeout=20)  # Increased timeout
+                        result = future.result(timeout=20)
                         processed_count += 1
                         if result is not None:
-                            if result['relevance_score'] > 0.2:  # Minimum relevance threshold
+                            if result['relevance_score'] > 0.3:
                                 results.append(result)
                                 batch_results += 1
                         
@@ -219,32 +199,24 @@ class IntelligentFileSearcher:
                     except Exception as e:
                         error_count += 1
                 
-        
-        # Sort by relevance score and return top results
         results.sort(key=lambda x: x['relevance_score'], reverse=True)
         return results[:max_results]
 
-    
     def _process_single_file(self, file_path: str, content_hint: str) -> dict | None:
         """Process a single file for relevance"""
         try:
-            # Get file stats
             stat = os.stat(file_path)
             filename = os.path.basename(file_path)
-            
-            # Extract text content
-            extracted_text = self.extract_text_from_file(file_path)
+
+            extracted_text = self.extracttext_fromfile(file_path)
             
             if not extracted_text:
-                # If no text extracted, try filename matching only
-                keywords = self.extract_keywords(content_hint)
+                keywords = self.make_keywords(content_hint)
                 relevance_score = self.calculate_keyword_score(keywords, filename) * 0.5
             else:
-                # Calculate full relevance score
                 relevance_score = self.calculate_relevance_score(content_hint, extracted_text, filename)
-            
-            # Create preview
-            preview = extracted_text[:self.max_preview_chars] if extracted_text else f"File: {filename}"
+                
+            preview = extracted_text[:self.max_prev] if extracted_text else f"File: {filename}"
             
             return {
                     "path": file_path,
@@ -257,27 +229,23 @@ class IntelligentFileSearcher:
         except Exception:
             return None
 
-# Initialize the MCP server
+# MCP
 mcp = FastMCP("FindFileByContent", dependencies=["sentence_transformers", "PyPDF2", "python-docx", "openpyxl"])
-searcher = IntelligentFileSearcher()
+searcher = FileSearcherByContent()
 
 @mcp.tool(description="Search for files on specified drive with given extension that match the content hint and display filename and its path of the file having greater relevance score. For example: 'Search for files on E drive with pdf extension that is about Breadth first search' and display filename and path of the file having greater relevance score.")
 async def search_files_by_content(drive: str, extension: str, content_hint: str) -> str:
     """
     Search for files on specified drive with given extension that match the content hint.
-    
     Args:
         drive: Drive letter (e.g., 'C', 'D', 'E') or full path
         extension: File extension to search for (e.g., 'pdf', 'docx', 'txt')
         content_hint: Description of the content to search for
-    
     Returns:
         JSON string with search results having filename, path, size, modified, relevance score and preview
     """
     try:
         results = await searcher.search_files(drive, extension, content_hint)
-        
-        # Convert results to JSON-serializable format
         json_results = []
         for result in results:
             if result['relevance_score'] > 0.4:
@@ -293,7 +261,6 @@ async def search_files_by_content(drive: str, extension: str, content_hint: str)
         """
         Display the filename and path of the matching files having greater relevance score
         """
-        
         return json.dumps({
             "status": "success",
             "found": len(json_results),
